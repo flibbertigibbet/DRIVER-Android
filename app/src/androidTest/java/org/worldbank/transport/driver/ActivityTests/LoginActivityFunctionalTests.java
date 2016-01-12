@@ -1,20 +1,21 @@
 package org.worldbank.transport.driver.ActivityTests;
 
+import android.app.Activity;
 import android.app.Instrumentation;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.test.ActivityInstrumentationTestCase2;
-import android.test.TouchUtils;
-import android.test.UiThreadTest;
 import android.test.ViewAsserts;
 import android.test.suitebuilder.annotation.MediumTest;
 import android.test.suitebuilder.annotation.SmallTest;
+import android.util.Log;
 import android.view.View;
 import android.widget.AutoCompleteTextView;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 
+import com.robotium.solo.Solo;
 import com.squareup.okhttp.HttpUrl;
 import com.squareup.okhttp.mockwebserver.MockResponse;
 import com.squareup.okhttp.mockwebserver.MockWebServer;
@@ -44,6 +45,8 @@ public class LoginActivityFunctionalTests extends ActivityInstrumentationTestCas
 
     private LoginActivity activity;
     private DriverApp app;
+    private Solo solo;
+    private Instrumentation instrumentation;
 
     // views
     AutoCompleteTextView usernameField;
@@ -60,11 +63,14 @@ public class LoginActivityFunctionalTests extends ActivityInstrumentationTestCas
     protected void setUp() throws Exception {
         super.setUp();
 
+        instrumentation = getInstrumentation();
+
         // clear any saved user info on device from shared preferences
         clearSharedPreferences();
 
         activity = getActivity();
-        DriverAppContext driverAppContext = new DriverAppContext((DriverApp) getInstrumentation()
+
+        DriverAppContext driverAppContext = new DriverAppContext((DriverApp) instrumentation
                 .getTargetContext().getApplicationContext());
         app = driverAppContext.getDriverApp();
 
@@ -76,7 +82,7 @@ public class LoginActivityFunctionalTests extends ActivityInstrumentationTestCas
     }
 
     private void clearSharedPreferences() {
-        Context targetContext = getInstrumentation().getTargetContext();
+        Context targetContext = instrumentation.getTargetContext();
         SharedPreferences preferences = targetContext.getSharedPreferences(
                 targetContext.getString(R.string.shared_preferences_file), Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = preferences.edit();
@@ -106,12 +112,17 @@ public class LoginActivityFunctionalTests extends ActivityInstrumentationTestCas
         ViewAsserts.assertRightAligned(usernameField, passwordField);
     }
 
-    @UiThreadTest
     @MediumTest
     public void testEmptyUsername() {
-        usernameField.setText("");
-        passwordField.setText("SOMEJUNKHERE");
-        loginButton.performClick();
+        solo = new Solo(instrumentation, activity);
+        solo.clearEditText(usernameField);
+        solo.typeText(passwordField, "SOMEJUNKHERE");
+        solo.clickOnView(loginButton);
+
+        solo.waitForView(progress);
+
+        solo.assertCurrentActivity("User allowed to log in without username", LoginActivity.class);
+        solo.waitForView(passwordField);
 
         assertNotNull("Username error message did not appear", usernameField.getError());
         assertNull("Password error appeared when field is OK", passwordField.getError());
@@ -119,20 +130,46 @@ public class LoginActivityFunctionalTests extends ActivityInstrumentationTestCas
         assertEquals("Username does not have focus on error", true, usernameField.hasFocus());
         assertEquals("Progress indicator showing when login form has error",
                 View.GONE, progress.getVisibility());
+
+        solo.finishOpenedActivities();
+
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
-    @UiThreadTest
     @MediumTest
     public void testEmptyPassword() {
-        usernameField.setText("SOMEJUNKHERE");
-        passwordField.setText("");
-        loginButton.performClick();
+        solo = new Solo(instrumentation, activity);
+
+        solo.waitForView(passwordField);
+
+        solo.clickOnView(usernameField);
+        solo.typeText(usernameField, "SOMEJUNKHERE");
+        solo.clickOnView(passwordField);
+        solo.clearEditText(passwordField);
+        solo.clickOnView(loginButton);
+
+        solo.waitForView(progress);
+
+        solo.assertCurrentActivity("User allowed to log in without password", LoginActivity.class);
+        solo.waitForView(passwordField);
 
         assertNotNull("Password error message did not appear", passwordField.getError());
         assertNull("Username error appeared when field is OK", usernameField.getError());
         assertEquals("Password does not have focus on error", true, passwordField.hasFocus());
         assertEquals("Progress indicator showing when login form has error",
                 View.GONE, progress.getVisibility());
+
+        solo.finishOpenedActivities();
+
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     @MediumTest
@@ -170,7 +207,6 @@ public class LoginActivityFunctionalTests extends ActivityInstrumentationTestCas
 
     @MediumTest
     public void testSuccessfulLogin() {
-        final Instrumentation instrumentation = getInstrumentation();
 
         // mock server responses
         MockWebServer server = new MockWebServer();
@@ -191,28 +227,14 @@ public class LoginActivityFunctionalTests extends ActivityInstrumentationTestCas
             server.enqueue(userInfoResponse);
             server.start();
 
-            /////////////
             // fill out login form
-            instrumentation.waitForIdleSync();
-            TouchUtils.tapView(this, usernameField);
-            instrumentation.waitForIdleSync();
-            instrumentation.sendStringSync("superfoo");
-            TouchUtils.tapView(this, passwordField);
-            instrumentation.waitForIdleSync();
-            instrumentation.sendStringSync("somepassword");
-            instrumentation.waitForIdleSync();
-            /////////////
+            solo = new Solo(instrumentation, activity);
+            solo.typeText(usernameField, "superfoo");
+            solo.typeText(passwordField, "somepassword");
 
-            // set up a monitor to watch for activity change; block next activity from actually displaying
-            final Instrumentation.ActivityMonitor receiverActivityMonitor = instrumentation.addMonitor(RecordListActivity.class.getName(), null, true);
+            solo.clickOnView(loginButton);
 
-            // go!
-            TouchUtils.tapView(this, loginButton);
-            instrumentation.waitForIdleSync();
-
-            instrumentation.waitForMonitorWithTimeout(receiverActivityMonitor, 3000);
-
-            assertEquals("Main activity did not get launched after login", 1, receiverActivityMonitor.getHits());
+            assertTrue("Main activity did not get launched after login", solo.waitForActivity(RecordListActivity.class));
 
             //////////////////////////////////
             // check expected requests made
@@ -236,6 +258,14 @@ public class LoginActivityFunctionalTests extends ActivityInstrumentationTestCas
             assertEquals("User should have write permission", true, userInfo.hasWritePermission());
             assertEquals("User token not set correctly", "15903f0d0dd44d79b6507f59470b5005", userInfo.getUserToken());
 
+            solo.finishOpenedActivities();
+
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
             // unset user info again for test state
             app.setUserInfo(null);
 
@@ -250,7 +280,6 @@ public class LoginActivityFunctionalTests extends ActivityInstrumentationTestCas
 
     @MediumTest
     public void testAttemptLoginInsufficientPrivileges() {
-        final Instrumentation instrumentation = getInstrumentation();
 
         // mock server responses
         MockWebServer server = new MockWebServer();
@@ -271,64 +300,39 @@ public class LoginActivityFunctionalTests extends ActivityInstrumentationTestCas
             server.enqueue(userInfoResponse);
             server.start();
 
-            /////////////
             // fill out login form
-            instrumentation.waitForIdleSync();
-            TouchUtils.tapView(this, usernameField);
-            instrumentation.waitForIdleSync();
-            instrumentation.sendStringSync("publicuser");
-            TouchUtils.tapView(this, passwordField);
-            instrumentation.waitForIdleSync();
-            instrumentation.sendStringSync("somepassword");
-            instrumentation.waitForIdleSync();
-            /////////////
-
-            // set up a monitor to watch for activity change; block next activity from actually displaying
-            final Instrumentation.ActivityMonitor receiverActivityMonitor = instrumentation
-                    .addMonitor(RecordListActivity.class.getName(), null, true);
+            solo = new Solo(instrumentation, activity);
+            solo.typeText(usernameField, "publicuser");
+            solo.typeText(passwordField, "somepassword");
 
             // go!
-            TouchUtils.tapView(this, loginButton);
-            instrumentation.waitForIdleSync();
-
-            instrumentation.waitForMonitorWithTimeout(receiverActivityMonitor, 1000);
-
-            assertEquals("User without write access allowed to log in", 0, receiverActivityMonitor.getHits());
+            solo.clickOnView(loginButton);
 
             // wait for progress bar to be dismissed
-            instrumentation.runOnMainSync(new Runnable() {
-                @Override
-                public void run() {
-                    int counter = 0;
-                    while ((progress.getVisibility() == View.VISIBLE) && counter < 20) {
-                        try {
-                            Thread.sleep(1000);
-                            counter += 1;
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
-            });
+            assertTrue(solo.waitForView(progress));
+
+            solo.assertCurrentActivity("User without write access allowed to log in", LoginActivity.class);
+            assertTrue(solo.waitForView(usernameField));
 
             server.shutdown();
-            instrumentation.waitForIdleSync();
 
             // check appropriate error message displayed
             assertNotSame("Progress indicator still showing when login form has error",
                     View.VISIBLE, progress.getVisibility());
 
-            Context targetContext = getInstrumentation().getTargetContext();
+            Context targetContext = instrumentation.getTargetContext();
             assertEquals("Message about insufficient privileges not displayed",
                     targetContext.getString(R.string.error_user_cannot_write_records), errorMessage.getText());
 
             // check user info was ~not~ saved
             assertEquals("Username should be empty after failed login", 0, app.getUserInfo().username.length());
+            solo.finishOpenedActivities();
+
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -339,6 +343,9 @@ public class LoginActivityFunctionalTests extends ActivityInstrumentationTestCas
     @Override
     protected void tearDown() throws Exception {
         super.tearDown();
-        getActivity().finish();
+
+        if (activity != null) {
+            activity.finish();
+        }
     }
 }

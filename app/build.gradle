@@ -116,7 +116,7 @@ dependencies {
     // test dependencies
     testCompile 'junit:junit:4.12'
 
-    androidTestCompile 'com.jayway.android.robotium:robotium-solo:5.5.3'
+    androidTestCompile 'com.jayway.android.robotium:robotium-solo:5.5.2'
 
     // mock web server and friends
     androidTestCompile 'com.squareup.okhttp:mockwebserver:2.7.0'

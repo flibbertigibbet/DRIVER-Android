@@ -1,11 +1,9 @@
 package org.worldbank.transport.driver.ActivityTests;
 
-import android.app.Activity;
 import android.app.Instrumentation;
 import android.content.Intent;
 import android.support.v7.widget.AppCompatTextView;
 import android.test.ActivityInstrumentationTestCase2;
-import android.test.TouchUtils;
 import android.test.ViewAsserts;
 import android.test.suitebuilder.annotation.MediumTest;
 import android.test.suitebuilder.annotation.SmallTest;
@@ -100,6 +98,7 @@ public class ConstantsActivityFunctionalTests extends ActivityInstrumentationTes
     @MediumTest
     public void testValidationErrorDisplay() {
         Button goButton = (Button) activity.findViewById(R.id.record_save_button_id);
+        View loaderView = activity.findViewById(R.id.form_progress);
 
         FormController formController = activity.getFormController();
         FormElementController whenCtl =  formController.getElement("occurredFrom");
@@ -137,7 +136,8 @@ public class ConstantsActivityFunctionalTests extends ActivityInstrumentationTes
         solo.clickOnView(goButton);
 
         // wait for validation to finish
-        solo.waitForView(activity.findViewById(R.id.form_progress));
+        solo.waitForView(loaderView);
+        solo.waitForView(goButton);
 
         assertEquals("Did not get expected when occurred field error", "Occurred is a required field", errorMsgView.getText());
         assertEquals("When occurred error view is not visible", View.VISIBLE, errorMsgView.getVisibility());
@@ -150,16 +150,18 @@ public class ConstantsActivityFunctionalTests extends ActivityInstrumentationTes
         solo.clickOnView(goButton);
 
         assertTrue("Details form did not get launched after constants form", solo.waitForActivity(RecordFormSectionActivity.class));
+
+        solo.finishOpenedActivities();
+
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
     protected void tearDown() throws Exception {
         super.tearDown();
-
-        if (solo != null) {
-            solo.finishOpenedActivities();
-        }
-
-        solo = null; // instantiate per test, as needed
     }
 }

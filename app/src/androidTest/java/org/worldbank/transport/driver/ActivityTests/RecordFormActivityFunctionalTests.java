@@ -17,12 +17,14 @@ import android.widget.RelativeLayout;
 
 import com.azavea.androidvalidatedforms.FormController;
 import com.azavea.androidvalidatedforms.FormElementController;
+import com.robotium.solo.Condition;
+import com.robotium.solo.Solo;
 
 import org.worldbank.transport.driver.R;
 import org.worldbank.transport.driver.activities.RecordFormActivity;
 import org.worldbank.transport.driver.activities.RecordFormItemActivity;
+import org.worldbank.transport.driver.activities.RecordItemListActivity;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -38,6 +40,7 @@ public class RecordFormActivityFunctionalTests extends ActivityInstrumentationTe
 
     private RecordFormItemActivity activity;
     private CountDownLatch displayLock;
+    private Solo solo;
 
     public RecordFormActivityFunctionalTests() {
         super(RecordFormItemActivity.class);
@@ -95,8 +98,9 @@ public class RecordFormActivityFunctionalTests extends ActivityInstrumentationTe
 
     @MediumTest
     public void testValidationErrorDisplay() {
-        final Instrumentation instrumentation = getInstrumentation();
-        final Button goButton = (Button) activity.findViewById(R.id.record_save_button_id);
+        Instrumentation instrumentation = getInstrumentation();
+        Button goButton = (Button) activity.findViewById(R.id.record_save_button_id);
+        View loaderView = activity.findViewById(R.id.form_progress);
 
         FormController formController = activity.getFormController();
         FormElementController licenseNoCtl =  formController.getElement("LicenseNumber");
@@ -129,45 +133,50 @@ public class RecordFormActivityFunctionalTests extends ActivityInstrumentationTe
         assertNotNull("Did not find error message view for license number field", errorMsgView);
         assertNotNull("Did not find text entry field for license number field", licenseNoField);
 
-
         // test validation on license view
-        instrumentation.waitForIdleSync();
-
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                licenseNoField.setText("123");
-                goButton.performClick();
-            }
-        });
+        solo = new Solo(instrumentation, activity);
+        solo.clickOnView(licenseNoField);
+        solo.typeText(licenseNoField, "123");
+        solo.scrollToBottom();
+        solo.clickOnView(goButton);
 
         // wait for validation to finish
-        FormActivityTestHelpers.waitForLoaderToDisappear(instrumentation, activity);
+        solo.waitForView(loaderView);
+        solo.waitForView(goButton);
 
         assertEquals("Did not get expected license # field error", "size must be between 6 and 8", errorMsgView.getText());
         assertEquals("License # error view is not visible", View.VISIBLE, errorMsgView.getVisibility());
 
         // now test that error clears from display once it has been fixed
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                licenseNoField.setText("123456");
-            }
-        });
-
-        instrumentation.waitForIdleSync();
-
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                goButton.performClick();
-            }
-        });
+        // necessary to scroll, or robotium will enter text into whatever field is where licenseNoField used to be
+        solo.scrollToTop();
+        solo.clickOnView(licenseNoField);
+        // robotium will append this to the existing text
+        solo.typeText(licenseNoField, "456");
+        solo.scrollToBottom();
+        solo.clickOnView(goButton);
 
         // wait for validation to finish
-        FormActivityTestHelpers.waitForLoaderToDisappear(instrumentation, activity);
+        final View loader = loaderView;
+        solo.waitForView(loaderView);
+
+        Condition condition = new Condition() {
+            @Override
+            public boolean isSatisfied() {
+                return loader.getVisibility() != View.VISIBLE;
+            }
+        };
+        solo.waitForCondition(condition, 2000);
 
         assertNotSame("License # error not cleared", View.VISIBLE, errorMsgView.getVisibility());
+
+        solo.finishOpenedActivities();
+
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override

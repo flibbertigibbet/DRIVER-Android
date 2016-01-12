@@ -36,6 +36,7 @@ public class FormActivityTestHelpers {
         return visited;
     }
 
+    // only for use during startup, before solo instantiated (can use solo waitForView afterwards)
     public static void waitForLoaderToDisappear(Instrumentation instrumentation, Activity activity) {
         instrumentation.waitForIdleSync();
         final View loaderView = activity.findViewById(R.id.form_progress);
